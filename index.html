@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cyber Run - Progressive Difficulty</title>
+    <title>Cyber Run - High Speed</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
 
@@ -157,8 +157,8 @@
         <h1>CYBER<br>RUN</h1>
         <p class="instruction">
             [TAP] ジャンプ / [DOUBLE TAP] 2段ジャンプ<br>
-            油断するな。序盤から牙を剥く。<br>
-            <span style="color: #f0f;">Progressive Difficulty</span>
+            SPEED UP VERSION<br>
+            <span style="color: #f0f;">High Velocity Mode</span>
         </p>
         <button id="startBtn" class="btn-cyber">START</button>
     </div>
@@ -176,14 +176,15 @@
     const SCALE = 0.7; // 全体スケール
 
     const CONFIG = {
-        gravity: (isMobile ? 0.45 : 0.5) * SCALE,
-        jumpForce: (isMobile ? 12.0 : 13.0) * SCALE,
-        doubleJumpForce: (isMobile ? 10.0 : 11.0) * SCALE,
+        // スピードアップに伴い、重力とジャンプ力も少し強化して操作感を調整
+        gravity: (isMobile ? 0.6 : 0.65) * SCALE, // 元: 0.45/0.5
+        jumpForce: (isMobile ? 14.0 : 15.0) * SCALE, // 元: 12.0/13.0
+        doubleJumpForce: (isMobile ? 11.0 : 12.0) * SCALE, // 元: 10.0/11.0
         
-        initialSpeed: (isMobile ? 2.5 : 3.5) * SCALE,
-        // 加速は極めて緩やかに (難易度は地形で上げるため)
-        speedIncrease: 0.00005 * SCALE, 
-        maxSpeed: (isMobile ? 7 : 9) * SCALE, 
+        // 初期スピードを約2倍に設定
+        initialSpeed: (isMobile ? 5.0 : 7.0) * SCALE, // 元: 2.5/3.5
+        speedIncrease: 0.0001 * SCALE, 
+        maxSpeed: (isMobile ? 10 : 13) * SCALE, // 元: 7/9
         
         colors: {
             bike: '#0ff', 
@@ -205,7 +206,7 @@
     const startBtn = document.getElementById('startBtn');
     const restartBtn = document.getElementById('restartBtn');
 
-    let animationId;
+    let animationId = null;
     let score = 0;
     let highScore = localStorage.getItem('cyberRunHighScore') || 0;
     let gameSpeed = CONFIG.initialSpeed;
@@ -304,7 +305,8 @@
         }
 
         drawTrail() {
-            if (frameCount % 4 === 0) {
+            // スピードが上がったのでトレイルの間隔を調整
+            if (frameCount % 3 === 0) {
                 this.trail.push({
                     x: this.x, 
                     y: this.y + (5 * SCALE),
@@ -436,7 +438,8 @@
             }
 
             const lastBlock = this.blocks[this.blocks.length - 1];
-            if (lastBlock.x + lastBlock.w < canvas.width + 300) {
+            // 生成トリガーの距離を速度に合わせて調整
+            if (lastBlock.x + lastBlock.w < canvas.width + 600) {
                 this.generateNextBlock(lastBlock);
             }
         }
@@ -452,17 +455,14 @@
             const maxDistance = gameSpeed * flightTime;
 
             // --- 難易度係数 (0.0 -> 1.0) ---
-            // 3000点でMAXになる
-            let difficulty = Math.min(score / 3000, 1.0);
+            let difficulty = Math.min(score / 5000, 1.0); // スコア増加が早いので分母を調整
             
             // --- ハードコア確率 ---
-            // 序盤(0点)でも 10% くらいの確率で変則的な地形が出る
-            // 終盤(3000点~)は 90% くらいがハードコア
             const hardcoreChance = 0.1 + (difficulty * 0.8);
 
             // デフォルト生成設定
             const scaleBaseGap = (isMobile ? 60 : 100) * SCALE;
-            let gap = Math.floor(scaleBaseGap + (gameSpeed * 10 * SCALE));
+            let gap = Math.floor(scaleBaseGap + (gameSpeed * 8 * SCALE)); // 係数を調整
             let w = Math.floor((Math.random() * 400 + 200) * SCALE);
             let heightDelta = (Math.random() * 200 - 100) * SCALE;
             let type = 'flat';
@@ -471,31 +471,26 @@
 
             // --- 確率分岐 ---
             if (Math.random() < hardcoreChance) {
-                // Hardcore Pattern Selection
                 const pattern = Math.random();
 
                 if (pattern < 0.25) {
                     // [Pattern A: The Wall] 絶壁
-                    // Difficultyが低いときは、そこまで高くしない
-                    const wallDifficulty = 0.5 + (difficulty * 0.5); // 0.5 ~ 1.0
+                    const wallDifficulty = 0.5 + (difficulty * 0.5); 
                     gap = scaleBaseGap; 
                     w = (Math.random() * 200 + 300) * SCALE;
-                    // Max高さ * 係数
-                    heightDelta = -(h2 * 0.9 * wallDifficulty); 
+                    heightDelta = -(h2 * 0.8 * wallDifficulty); // 高さを少し抑えめに（スピードがあるため事故りやすい）
                     
                 } else if (pattern < 0.5) {
                     // [Pattern B: Long Jump] 遠距離
-                    // Difficultyが低いときは、距離を抑える
-                    const distDifficulty = 0.6 + (difficulty * 0.4); // 0.6 ~ 1.0
+                    const distDifficulty = 0.6 + (difficulty * 0.4); 
                     heightDelta = (Math.random() * 100 + 50) * SCALE; 
-                    gap = maxDistance * 0.75 * distDifficulty;
+                    gap = maxDistance * 0.7 * distDifficulty; // 係数を少し安全側に
                     w = (Math.random() * 300 + 200) * SCALE;
 
                 } else if (pattern < 0.75) {
                     // [Pattern C: Tiny Platform] 極小足場
                     gap = (Math.random() * 100 + 50) * SCALE;
-                    // 難易度が高いほど小さくなる
-                    const minW = 80 * SCALE;
+                    const minW = 100 * SCALE; // 最低幅を少し拡大
                     const bonusW = (1.0 - difficulty) * 200 * SCALE;
                     w = minW + bonusW; 
                     heightDelta = (Math.random() * 200 - 100) * SCALE;
@@ -516,7 +511,7 @@
                     }
                 }
             } else {
-                // Normal Mode (たまに緩い坂が出る程度)
+                // Normal Mode
                 if (Math.random() > 0.5) {
                     type = 'slope';
                     const slopeH = (Math.random() * 100 * SCALE) + 30 * SCALE;
@@ -526,10 +521,8 @@
                 }
             }
 
-            // 最終座標決定
             let nextY = startY + heightDelta;
             
-            // 画面外制限
             const marginTop = 150 * SCALE;
             const marginBottom = canvas.height - (150 * SCALE);
             
@@ -619,6 +612,12 @@
     let background;
 
     function initGame() {
+        // 重複起動防止（モバイルでの速度異常の原因対策）
+        if (animationId) {
+            cancelAnimationFrame(animationId);
+            animationId = null;
+        }
+
         bike = new Bike();
         terrain = new Terrain();
         background = new Background();
@@ -637,7 +636,10 @@
 
     function gameOver() {
         isGameRunning = false;
-        cancelAnimationFrame(animationId);
+        if (animationId) {
+            cancelAnimationFrame(animationId);
+            animationId = null;
+        }
         finalScoreEl.innerText = Math.floor(score);
         if (score > highScore) {
             highScore = score;
@@ -673,7 +675,7 @@
                     targetAngle = 0;
                 }
 
-                const tolerance = 20 * SCALE; 
+                const tolerance = 25 * SCALE; // スピードアップに伴い許容範囲を少し広げる
                 if (by + bh >= surfaceY - tolerance && by + bh <= surfaceY + tolerance + (bike.dy > 0 ? bike.dy : 0)) {
                     if (bike.dy >= -5 * SCALE) { 
                         bike.y = surfaceY - bh; 
@@ -683,7 +685,7 @@
                     }
                 }
 
-                const penetrationLimit = 15 * SCALE; 
+                const penetrationLimit = 20 * SCALE; // スピードアップに伴い調整
                 if (bx + bw > block.x && bx - bw < block.x + penetrationLimit) {
                      if (by + bh > surfaceY + (5 * SCALE)) { 
                          return true; 
@@ -725,20 +727,27 @@
     }
 
     function handleJump(e) {
-        if (e.cancelable) e.preventDefault();
+        // e.preventDefault() はイベントリスナー側で制御
         if (isGameRunning) {
             bike.jump();
         }
     }
 
+    // タッチデバイス対策
+    // ボタン以外のタッチでジャンプ
     document.addEventListener('touchstart', (e) => {
-        if (e.target.tagName !== 'BUTTON') handleJump(e);
+        if (e.target.tagName !== 'BUTTON') {
+            e.preventDefault(); // スクロール防止
+            handleJump(e);
+        }
     }, { passive: false });
 
+    // PC/マウスクリック
     document.addEventListener('mousedown', (e) => {
          if (e.target.tagName !== 'BUTTON') handleJump(e);
     });
     
+    // キーボード操作
     window.addEventListener('keydown', (e) => {
         if (e.code === 'Space' || e.code === 'ArrowUp') {
             handleJump(e);
@@ -746,15 +755,19 @@
     });
 
     const startGame = (e) => {
+        e.preventDefault(); 
         e.stopPropagation();
         initGame();
     };
 
+    // リスナー登録（重複発火を防ぐため、initGame内で既存ループをキャンセルするように修正済み）
     startBtn.addEventListener('click', startGame);
-    startBtn.addEventListener('touchstart', startGame);
+    startBtn.addEventListener('touchstart', startGame, { passive: false });
+    
     restartBtn.addEventListener('click', startGame);
-    restartBtn.addEventListener('touchstart', startGame);
+    restartBtn.addEventListener('touchstart', startGame, { passive: false });
 
+    // 初期描画
     const bg = new Background();
     const tr = new Terrain();
     bg.draw();
