@@ -29,11 +29,13 @@
             justify-content: center;
             align-items: center;
             overflow: hidden;
+            touch-action: none; /* コンテナレベルでも無効化 */
         }
 
         canvas {
             display: block;
             background: linear-gradient(180deg, #0a0a20 0%, #1a0b2e 100%);
+            touch-action: none;
         }
 
         /* UI Overlay */
@@ -177,13 +179,12 @@
     const isMobile = window.innerWidth <= 800; 
     const SCALE = 0.7; // 全体スケール
 
+    // CONFIGの値は「60FPS（16.6ms）基準での1フレームあたりの変化量」とする
     const CONFIG = {
-        // スピードアップに伴い、重力とジャンプ力も少し強化して操作感を調整
         gravity: (isMobile ? 0.6 : 0.65) * SCALE, 
         jumpForce: (isMobile ? 14.0 : 15.0) * SCALE,
         doubleJumpForce: (isMobile ? 11.0 : 12.0) * SCALE,
         
-        // 初期スピードを約2倍に設定
         initialSpeed: (isMobile ? 5.0 : 7.0) * SCALE,
         speedIncrease: 0.0001 * SCALE, 
         maxSpeed: (isMobile ? 10 : 13) * SCALE,
@@ -215,6 +216,9 @@
     let gameSpeed = CONFIG.initialSpeed;
     let isGameRunning = false;
     let frameCount = 0;
+    
+    // Delta Time Control
+    let lastTime = 0;
 
     // --- Resize ---
     function resize() {
@@ -248,18 +252,27 @@
             this.trail = [];
         }
 
-        draw() {
+        // updateにtimeScale (Delta Time Factor) を受け取る
+        update(timeScale) {
+            // 重力も時間経過に応じて適用
+            this.dy += CONFIG.gravity * timeScale;
+            // 移動も時間経過に応じて適用
+            this.y += this.dy * timeScale;
+        }
+
+        draw(timeScale) {
             ctx.save();
             ctx.translate(this.x, this.y);
             
+            // 回転アニメーションも時間補正
             if (this.isBackflipping) {
-                this.rotation -= 0.3; 
+                this.rotation -= 0.3 * timeScale; 
             } else {
                 if (!this.grounded) {
                     this.targetRotation = Math.min(this.dy * 0.05, 0.5);
-                    this.rotation += (this.targetRotation - this.rotation) * 0.1;
+                    this.rotation += (this.targetRotation - this.rotation) * 0.1 * timeScale;
                 } else {
-                    this.rotation += (this.targetRotation - this.rotation) * 0.25;
+                    this.rotation += (this.targetRotation - this.rotation) * 0.25 * timeScale;
                 }
             }
             
@@ -294,7 +307,7 @@
             this.drawWheel(15, 10, time);
 
             ctx.restore();
-            this.drawTrail();
+            this.drawTrail(timeScale);
         }
 
         drawWheel(x, y, time) {
@@ -307,8 +320,7 @@
             ctx.stroke();
         }
 
-        drawTrail() {
-            // スピードが上がったのでトレイルの間隔を調整
+        drawTrail(timeScale) {
             if (frameCount % 3 === 0) {
                 this.trail.push({
                     x: this.x, 
@@ -325,22 +337,21 @@
             for (let i = 0; i < this.trail.length - 1; i++) {
                 let p1 = this.trail[i];
                 let p2 = this.trail[i+1];
-                p1.x -= gameSpeed; 
+                
+                // トレイルの移動も時間補正
+                p1.x -= gameSpeed * timeScale; 
 
                 ctx.strokeStyle = p1.isSpecial ? '#f0f' : `rgba(0, 255, 255, 0.4)`;
                 ctx.shadowColor = p1.isSpecial ? '#f0f' : CONFIG.colors.bike;
                 
                 ctx.beginPath();
                 ctx.moveTo(p1.x, p1.y);
-                ctx.lineTo(p2.x - gameSpeed, p2.y);
+                // p2の座標は描画用なので、ここでは単純に線を引く
+                // ※p2自体もループの次の回でp1として移動される
+                ctx.lineTo(p2.x - (gameSpeed * timeScale), p2.y);
                 ctx.stroke();
             }
             ctx.restore();
-        }
-
-        update() {
-            this.dy += CONFIG.gravity;
-            this.y += this.dy;
         }
 
         jump() {
@@ -424,7 +435,6 @@
     class Terrain {
         constructor() {
             this.blocks = [];
-            // スタート地点は長めの安全地帯
             this.addBlock(0, canvas.height * 0.7, canvas.width + 500, 'flat');
         }
 
@@ -432,74 +442,65 @@
             this.blocks.push(new Block(x, y, w, type, endY));
         }
 
-        update() {
+        update(timeScale) {
             for (let i = 0; i < this.blocks.length; i++) {
-                this.blocks[i].x -= gameSpeed;
+                // 地形移動に時間補正
+                this.blocks[i].x -= gameSpeed * timeScale;
             }
             if (this.blocks.length > 0 && this.blocks[0].x + this.blocks[0].w < -100) {
                 this.blocks.shift();
             }
 
             const lastBlock = this.blocks[this.blocks.length - 1];
-            // 生成トリガーの距離を速度に合わせて調整
             if (lastBlock.x + lastBlock.w < canvas.width + 600) {
                 this.generateNextBlock(lastBlock);
             }
         }
 
         generateNextBlock(lastBlock) {
+            // ここは静的な配置計算なので timeScale は不要 (gameSpeed自体は現在の速度)
             const gravity = CONFIG.gravity;
             const v1 = CONFIG.jumpForce;
             const v2 = CONFIG.doubleJumpForce;
             
-            // ジャンプスペック
             const h2 = ((v1 + v2) * (v1 + v2)) / (2 * gravity); 
             const flightTime = (v1 + v2) / gravity * 2.2; 
             const maxDistance = gameSpeed * flightTime;
 
-            // --- 難易度係数 (0.0 -> 1.0) ---
-            let difficulty = Math.min(score / 5000, 1.0); // スコア増加が早いので分母を調整
-            
-            // --- ハードコア確率 ---
+            let difficulty = Math.min(score / 5000, 1.0); 
             const hardcoreChance = 0.1 + (difficulty * 0.8);
 
-            // デフォルト生成設定
             const scaleBaseGap = (isMobile ? 60 : 100) * SCALE;
-            let gap = Math.floor(scaleBaseGap + (gameSpeed * 8 * SCALE)); // 係数を調整
+            let gap = Math.floor(scaleBaseGap + (gameSpeed * 8 * SCALE)); 
             let w = Math.floor((Math.random() * 400 + 200) * SCALE);
             let heightDelta = (Math.random() * 200 - 100) * SCALE;
             let type = 'flat';
             let endY;
             let startY = lastBlock.endY;
 
-            // --- 確率分岐 ---
             if (Math.random() < hardcoreChance) {
                 const pattern = Math.random();
 
                 if (pattern < 0.25) {
-                    // [Pattern A: The Wall] 絶壁
                     const wallDifficulty = 0.5 + (difficulty * 0.5); 
                     gap = scaleBaseGap; 
                     w = (Math.random() * 200 + 300) * SCALE;
-                    heightDelta = -(h2 * 0.8 * wallDifficulty); // 高さを少し抑えめに（スピードがあるため事故りやすい）
+                    heightDelta = -(h2 * 0.8 * wallDifficulty); 
                     
                 } else if (pattern < 0.5) {
-                    // [Pattern B: Long Jump] 遠距離
                     const distDifficulty = 0.6 + (difficulty * 0.4); 
                     heightDelta = (Math.random() * 100 + 50) * SCALE; 
-                    gap = maxDistance * 0.7 * distDifficulty; // 係数を少し安全側に
+                    gap = maxDistance * 0.7 * distDifficulty; 
                     w = (Math.random() * 300 + 200) * SCALE;
 
                 } else if (pattern < 0.75) {
-                    // [Pattern C: Tiny Platform] 極小足場
                     gap = (Math.random() * 100 + 50) * SCALE;
-                    const minW = 100 * SCALE; // 最低幅を少し拡大
+                    const minW = 100 * SCALE; 
                     const bonusW = (1.0 - difficulty) * 200 * SCALE;
                     w = minW + bonusW; 
                     heightDelta = (Math.random() * 200 - 100) * SCALE;
 
                 } else {
-                    // [Pattern D: Steep Slope] 急な坂
                     type = 'slope';
                     w = (Math.random() * 300 + 200) * SCALE;
                     gap = scaleBaseGap;
@@ -514,7 +515,6 @@
                     }
                 }
             } else {
-                // Normal Mode
                 if (Math.random() > 0.5) {
                     type = 'slope';
                     const slopeH = (Math.random() * 100 * SCALE) + 30 * SCALE;
@@ -525,7 +525,6 @@
             }
 
             let nextY = startY + heightDelta;
-            
             const marginTop = 150 * SCALE;
             const marginBottom = canvas.height - (150 * SCALE);
             
@@ -569,13 +568,14 @@
             });
         }
 
-        draw() {
+        draw(timeScale) {
             const scrollSpeed = gameSpeed * 0.2;
-            this.offset = (this.offset + gameSpeed * 0.5) % (100 * SCALE);
+            // 背景スクロールに時間補正
+            this.offset = (this.offset + gameSpeed * 0.5 * timeScale) % (100 * SCALE);
             
             ctx.save();
             this.buildings.forEach((b, index) => {
-                b.x -= scrollSpeed;
+                b.x -= scrollSpeed * timeScale;
                 if(b.x + b.w < 0) {
                     b.x = canvas.width + Math.random() * 100;
                     b.h = (100 + Math.random() * 300) * SCALE;
@@ -615,7 +615,6 @@
     let background;
 
     function initGame() {
-        // 重複起動防止
         if (animationId) {
             cancelAnimationFrame(animationId);
             animationId = null;
@@ -634,7 +633,10 @@
         gameOverScreen.classList.add('hidden');
         
         frameCount = 0;
-        animate();
+        lastTime = performance.now(); // タイマーリセット
+        
+        // requestAnimationFrameに直接コールバックを渡して開始
+        animationId = requestAnimationFrame(animate);
     }
 
     function gameOver() {
@@ -678,7 +680,7 @@
                     targetAngle = 0;
                 }
 
-                const tolerance = 25 * SCALE; // スピードアップに伴い許容範囲を少し広げる
+                const tolerance = 25 * SCALE; 
                 if (by + bh >= surfaceY - tolerance && by + bh <= surfaceY + tolerance + (bike.dy > 0 ? bike.dy : 0)) {
                     if (bike.dy >= -5 * SCALE) { 
                         bike.y = surfaceY - bh; 
@@ -688,7 +690,7 @@
                     }
                 }
 
-                const penetrationLimit = 20 * SCALE; // スピードアップに伴い調整
+                const penetrationLimit = 20 * SCALE; 
                 if (bx + bw > block.x && bx - bw < block.x + penetrationLimit) {
                      if (by + bh > surfaceY + (5 * SCALE)) { 
                          return true; 
@@ -699,38 +701,53 @@
         return false;
     }
 
-    function animate() {
+    // Delta Time Logic実装
+    function animate(timestamp) {
         if (!isGameRunning) return;
+        
+        // 初回呼び出し時のガード
+        if (!lastTime) lastTime = timestamp;
+        
+        // 前フレームからの経過時間(ms)
+        const deltaTime = timestamp - lastTime;
+        lastTime = timestamp;
+
+        // 基準: 60FPS (約16.666ms)
+        // 経過時間が16.666msなら 1.0 になる係数
+        // 120Hzなら約8.3msなので 0.5 になり、移動量も半分になる -> 2回呼ばれて計1.0相当に進む
+        // タブ切り替えなどで時間が飛びすぎた場合の補正（最大でも3フレーム分程度に制限）
+        let timeScale = deltaTime / 16.666;
+        if (timeScale > 3.0) timeScale = 1.0; // 異常値は1.0に戻す
 
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         if (gameSpeed < CONFIG.maxSpeed) {
-            gameSpeed += CONFIG.speedIncrease;
+            gameSpeed += CONFIG.speedIncrease * timeScale;
         }
-        score += gameSpeed * 0.1;
+        score += gameSpeed * 0.1 * timeScale;
         scoreEl.innerText = Math.floor(score);
         frameCount++;
 
-        background.draw();
+        // 全ての更新処理に timeScale を渡す
+        background.draw(timeScale);
         
-        terrain.update();
+        terrain.update(timeScale);
         terrain.draw();
 
-        bike.update();
+        bike.update(timeScale);
         
         if (checkCollision()) {
             gameOver();
-            bike.draw(); 
+            bike.draw(timeScale); 
             return;
         }
 
-        bike.draw();
+        bike.draw(timeScale);
 
         animationId = requestAnimationFrame(animate);
     }
 
     function handleJump(e) {
-        // e.preventDefault() はイベントリスナー側で制御
         if (isGameRunning) {
             bike.jump();
         }
@@ -739,34 +756,28 @@
     // --- Touch & Click Handling ---
     let isTouching = false;
 
-    // Game Container に対するタッチ制御
-    // ボタン以外の領域でのタッチ操作を適切に処理
     gameContainer.addEventListener('touchstart', (e) => {
         if (e.target.tagName !== 'BUTTON') {
-            e.preventDefault(); // デフォルトのスクロール/ズームなどを防ぐ
+            e.preventDefault(); 
             isTouching = true;
             handleJump(e);
         }
     }, { passive: false });
 
-    // スクロールやズームを完全に防ぐ
     gameContainer.addEventListener('touchmove', (e) => {
         e.preventDefault(); 
     }, { passive: false });
 
     gameContainer.addEventListener('touchend', (e) => {
         e.preventDefault();
-        // 遅延してフラグを下ろす（タッチ後の遅延クリックイベント対策）
         setTimeout(() => { isTouching = false; }, 300);
     }, { passive: false });
 
-    // PC/マウス操作
     document.addEventListener('mousedown', (e) => {
-        if (isTouching) return; // タッチ直後のマウスイベントは無視
+        if (isTouching) return; 
         if (e.target.tagName !== 'BUTTON') handleJump(e);
     });
     
-    // キーボード操作
     window.addEventListener('keydown', (e) => {
         if (e.code === 'Space' || e.code === 'ArrowUp') {
             handleJump(e);
@@ -779,7 +790,6 @@
         initGame();
     };
 
-    // リスナー登録
     startBtn.addEventListener('click', startGame);
     startBtn.addEventListener('touchstart', startGame, { passive: false });
     
@@ -789,7 +799,7 @@
     // 初期描画
     const bg = new Background();
     const tr = new Terrain();
-    bg.draw();
+    bg.draw(1); // 初期描画はtimeScale=1で
     tr.draw();
 
 </script>
