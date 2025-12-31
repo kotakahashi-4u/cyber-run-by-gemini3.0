@@ -1,0 +1,769 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Cyber Run - Speed Adjusted</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background-color: #050510;
+            font-family: 'Orbitron', sans-serif;
+            touch-action: none;
+            color: #fff;
+            -webkit-user-select: none;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            background: linear-gradient(180deg, #0a0a20 0%, #1a0b2e 100%);
+        }
+
+        /* UI Overlay */
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            box-sizing: border-box;
+            z-index: 20;
+        }
+
+        .score-board {
+            font-size: 24px;
+            color: #0ff;
+            text-shadow: 0 0 10px #0ff;
+            font-weight: bold;
+            letter-spacing: 2px;
+        }
+
+        .high-score {
+            font-size: 16px;
+            color: #f0f;
+            text-shadow: 0 0 8px #f0f;
+            margin-top: 5px;
+        }
+
+        /* Screens */
+        #menu-screen, #game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            backdrop-filter: blur(8px);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            pointer-events: auto;
+            z-index: 30;
+        }
+
+        h1 {
+            font-size: 48px;
+            margin: 0 0 20px 0;
+            background: linear-gradient(90deg, #0ff, #f0f);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            text-shadow: 0 0 20px rgba(0, 255, 255, 0.5);
+            text-align: center;
+            line-height: 1.2;
+        }
+
+        p.instruction {
+            font-size: 14px;
+            color: #ccc;
+            margin-bottom: 30px;
+            text-align: center;
+            line-height: 1.8;
+            max-width: 80%;
+        }
+
+        button.btn-cyber {
+            background: rgba(0, 255, 255, 0.1);
+            color: #0ff;
+            border: 2px solid #0ff;
+            padding: 15px 50px;
+            font-size: 20px;
+            font-family: 'Orbitron', sans-serif;
+            text-transform: uppercase;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+
+        button.btn-cyber:active {
+            background: #0ff;
+            color: #000;
+            transform: scale(0.95);
+        }
+
+        .hidden {
+            display: none !important;
+        }
+
+        /* Scanlines */
+        .scanlines {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06));
+            background-size: 100% 4px, 6px 100%;
+            pointer-events: none;
+            z-index: 10;
+        }
+    </style>
+</head>
+<body>
+
+<div id="game-container">
+    <canvas id="gameCanvas"></canvas>
+    <div class="scanlines"></div>
+
+    <div id="ui-layer">
+        <div>
+            <div class="score-board">SCORE: <span id="score">0</span></div>
+            <div class="high-score">BEST: <span id="highScore">0</span></div>
+        </div>
+    </div>
+
+    <div id="menu-screen">
+        <h1>CYBER<br>RUN</h1>
+        <p class="instruction">
+            [TAP] ジャンプ / [DOUBLE TAP] 2段ジャンプ<br>
+            油断するな。序盤から牙を剥く。<br>
+            <span style="color: #f0f;">Speed Adjusted Edition</span>
+        </p>
+        <button id="startBtn" class="btn-cyber">START</button>
+    </div>
+
+    <div id="game-over-screen" class="hidden">
+        <h1 style="background: none; color: #f0f; -webkit-text-fill-color: #f0f; text-shadow: 0 0 20px #f0f;">CRASHED</h1>
+        <p class="score-board">SCORE: <span id="finalScore">0</span></p>
+        <button id="restartBtn" class="btn-cyber">RETRY</button>
+    </div>
+</div>
+
+<script>
+    // --- Device Detection & Config ---
+    const isMobile = window.innerWidth <= 800; 
+    const SCALE = 0.7; // 全体スケール
+
+    const CONFIG = {
+        gravity: (isMobile ? 0.45 : 0.5) * SCALE,
+        jumpForce: (isMobile ? 12.0 : 13.0) * SCALE,
+        doubleJumpForce: (isMobile ? 10.0 : 11.0) * SCALE,
+        
+        // Initial Speed Adjusted:
+        // Mobile: 2.5 -> 3.0 (+20%)
+        // PC: 3.5 -> 7.0 (x2)
+        initialSpeed: (isMobile ? 3.0 : 7.0) * SCALE,
+        // 加速は極めて緩やかに (難易度は地形で上げるため)
+        speedIncrease: 0.00005 * SCALE, 
+        // Max Speed Adjusted to accommodate higher initial speeds
+        maxSpeed: (isMobile ? 8 : 13) * SCALE, 
+        
+        colors: {
+            bike: '#0ff', 
+            wheels: '#fff',
+            ground: '#f0f', 
+            groundTop: '#fff',
+            bgGrid: 'rgba(0, 255, 255, 0.15)'
+        }
+    };
+
+    // --- Game Setup ---
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreEl = document.getElementById('score');
+    const highScoreEl = document.getElementById('highScore');
+    const finalScoreEl = document.getElementById('finalScore');
+    const menuScreen = document.getElementById('menu-screen');
+    const gameOverScreen = document.getElementById('game-over-screen');
+    const startBtn = document.getElementById('startBtn');
+    const restartBtn = document.getElementById('restartBtn');
+
+    let animationId;
+    let score = 0;
+    let highScore = localStorage.getItem('cyberRunHighScore') || 0;
+    let gameSpeed = CONFIG.initialSpeed;
+    let isGameRunning = false;
+    let frameCount = 0;
+
+    // --- Resize ---
+    function resize() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    highScoreEl.innerText = Math.floor(highScore);
+
+    // --- Utility ---
+    function getAngle(x1, y1, x2, y2) {
+        return Math.atan2(y2 - y1, x2 - x1);
+    }
+
+    // --- Classes ---
+
+    class Bike {
+        constructor() {
+            this.width = 40 * SCALE;
+            this.height = 20 * SCALE;
+            this.x = canvas.width * 0.2;
+            this.y = 0;
+            this.dy = 0;
+            this.jumpCount = 0;
+            this.grounded = false;
+            this.rotation = 0;
+            this.targetRotation = 0;
+            this.isBackflipping = false;
+            this.trail = [];
+        }
+
+        draw() {
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            
+            if (this.isBackflipping) {
+                this.rotation -= 0.3; 
+            } else {
+                if (!this.grounded) {
+                    this.targetRotation = Math.min(this.dy * 0.05, 0.5);
+                    this.rotation += (this.targetRotation - this.rotation) * 0.1;
+                } else {
+                    this.rotation += (this.targetRotation - this.rotation) * 0.25;
+                }
+            }
+            
+            ctx.rotate(this.rotation);
+            ctx.scale(SCALE, SCALE);
+
+            // Glow
+            ctx.shadowBlur = this.isBackflipping ? 25 : 15;
+            ctx.shadowColor = CONFIG.colors.bike;
+
+            // Bike Visuals
+            ctx.strokeStyle = CONFIG.colors.bike;
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-15, 5); 
+            ctx.lineTo(0, 5);
+            ctx.lineTo(10, -10); 
+            ctx.lineTo(-5, -5); 
+            ctx.lineTo(-15, 5);
+            ctx.stroke();
+
+            ctx.fillStyle = '#fff';
+            ctx.beginPath();
+            ctx.arc(2, -15, 4, 0, Math.PI * 2);
+            ctx.fill();
+
+            const time = Date.now() / (isMobile ? 80 : 50);
+            ctx.strokeStyle = CONFIG.colors.wheels;
+            this.drawWheel(-15, 10, time);
+            this.drawWheel(15, 10, time);
+
+            ctx.restore();
+            this.drawTrail();
+        }
+
+        drawWheel(x, y, time) {
+            ctx.beginPath();
+            ctx.arc(x, y, 8, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + Math.cos(time) * 8, y + Math.sin(time) * 8);
+            ctx.stroke();
+        }
+
+        drawTrail() {
+            if (frameCount % 4 === 0) {
+                this.trail.push({
+                    x: this.x, 
+                    y: this.y + (5 * SCALE),
+                    isSpecial: this.isBackflipping
+                });
+                if (this.trail.length > 20) this.trail.shift();
+            }
+
+            ctx.save();
+            ctx.shadowBlur = 10;
+            ctx.lineWidth = 2 * SCALE;
+            
+            for (let i = 0; i < this.trail.length - 1; i++) {
+                let p1 = this.trail[i];
+                let p2 = this.trail[i+1];
+                p1.x -= gameSpeed; 
+
+                ctx.strokeStyle = p1.isSpecial ? '#f0f' : `rgba(0, 255, 255, 0.4)`;
+                ctx.shadowColor = p1.isSpecial ? '#f0f' : CONFIG.colors.bike;
+                
+                ctx.beginPath();
+                ctx.moveTo(p1.x, p1.y);
+                ctx.lineTo(p2.x - gameSpeed, p2.y);
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+
+        update() {
+            this.dy += CONFIG.gravity;
+            this.y += this.dy;
+        }
+
+        jump() {
+            if (this.jumpCount < 2) {
+                if (this.jumpCount === 0) {
+                    this.dy = -CONFIG.jumpForce;
+                } else {
+                    this.dy = -CONFIG.doubleJumpForce;
+                    this.isBackflipping = true;
+                }
+                this.jumpCount++;
+                this.grounded = false;
+            }
+        }
+        
+        land(angle) {
+            this.grounded = true;
+            this.jumpCount = 0;
+            this.isBackflipping = false;
+            this.targetRotation = angle || 0;
+            while(this.rotation > Math.PI) this.rotation -= Math.PI * 2;
+            while(this.rotation < -Math.PI) this.rotation += Math.PI * 2;
+        }
+    }
+
+    class Block {
+        constructor(x, y, w, type = 'flat', endY = null) {
+            this.x = x;
+            this.y = y; 
+            this.w = w;
+            this.type = type; 
+            this.endY = endY !== null ? endY : y; 
+            this.h = canvas.height * 3; 
+        }
+
+        draw() {
+            if (this.x > canvas.width || this.x + this.w < 0) return;
+
+            ctx.fillStyle = '#050510';
+            ctx.strokeStyle = CONFIG.colors.ground;
+            ctx.lineWidth = 2 * SCALE;
+
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y);
+            ctx.lineTo(this.x + this.w, this.endY);
+            ctx.lineTo(this.x + this.w, canvas.height);
+            ctx.lineTo(this.x, canvas.height);
+            ctx.closePath();
+            
+            ctx.fillStyle = '#111'; 
+            ctx.fill();
+            
+            ctx.beginPath();
+            ctx.moveTo(this.x, canvas.height);
+            ctx.lineTo(this.x, this.y); 
+            ctx.lineTo(this.x + this.w, this.endY); 
+            ctx.lineTo(this.x + this.w, canvas.height); 
+            ctx.stroke();
+
+            ctx.strokeStyle = CONFIG.colors.groundTop;
+            ctx.lineWidth = 4 * SCALE;
+            ctx.beginPath();
+            ctx.moveTo(this.x, this.y);
+            ctx.lineTo(this.x + this.w, this.endY);
+            ctx.stroke();
+            
+            ctx.strokeStyle = 'rgba(255, 0, 255, 0.15)';
+            ctx.lineWidth = 1;
+            const step = 40 * SCALE;
+            for(let gx = this.x; gx < this.x + this.w; gx += step) {
+                const progress = (gx - this.x) / this.w;
+                const topY = this.y + (this.endY - this.y) * progress;
+                ctx.beginPath();
+                ctx.moveTo(gx, topY);
+                ctx.lineTo(gx, canvas.height);
+                ctx.stroke();
+            }
+        }
+    }
+
+    class Terrain {
+        constructor() {
+            this.blocks = [];
+            // スタート地点は長めの安全地帯
+            this.addBlock(0, canvas.height * 0.7, canvas.width + 500, 'flat');
+        }
+
+        addBlock(x, y, w, type, endY = null) {
+            this.blocks.push(new Block(x, y, w, type, endY));
+        }
+
+        update() {
+            for (let i = 0; i < this.blocks.length; i++) {
+                this.blocks[i].x -= gameSpeed;
+            }
+            if (this.blocks.length > 0 && this.blocks[0].x + this.blocks[0].w < -100) {
+                this.blocks.shift();
+            }
+
+            const lastBlock = this.blocks[this.blocks.length - 1];
+            if (lastBlock.x + lastBlock.w < canvas.width + 300) {
+                this.generateNextBlock(lastBlock);
+            }
+        }
+
+        generateNextBlock(lastBlock) {
+            const gravity = CONFIG.gravity;
+            const v1 = CONFIG.jumpForce;
+            const v2 = CONFIG.doubleJumpForce;
+            
+            // ジャンプスペック
+            const h2 = ((v1 + v2) * (v1 + v2)) / (2 * gravity); 
+            const flightTime = (v1 + v2) / gravity * 2.2; 
+            const maxDistance = gameSpeed * flightTime;
+
+            // --- 難易度係数 (0.0 -> 1.0) ---
+            // 3000点でMAXになる
+            let difficulty = Math.min(score / 3000, 1.0);
+            
+            // --- ハードコア確率 ---
+            // 序盤(0点)でも 10% くらいの確率で変則的な地形が出る
+            // 終盤(3000点~)は 90% くらいがハードコア
+            const hardcoreChance = 0.1 + (difficulty * 0.8);
+
+            // デフォルト生成設定
+            const scaleBaseGap = (isMobile ? 60 : 100) * SCALE;
+            let gap = Math.floor(scaleBaseGap + (gameSpeed * 10 * SCALE));
+            let w = Math.floor((Math.random() * 400 + 200) * SCALE);
+            let heightDelta = (Math.random() * 200 - 100) * SCALE;
+            let type = 'flat';
+            let endY;
+            let startY = lastBlock.endY;
+
+            // --- 確率分岐 ---
+            if (Math.random() < hardcoreChance) {
+                // Hardcore Pattern Selection
+                const pattern = Math.random();
+
+                if (pattern < 0.25) {
+                    // [Pattern A: The Wall] 絶壁
+                    // Difficultyが低いときは、そこまで高くしない
+                    const wallDifficulty = 0.5 + (difficulty * 0.5); // 0.5 ~ 1.0
+                    gap = scaleBaseGap; 
+                    w = (Math.random() * 200 + 300) * SCALE;
+                    // Max高さ * 係数
+                    heightDelta = -(h2 * 0.9 * wallDifficulty); 
+                    
+                } else if (pattern < 0.5) {
+                    // [Pattern B: Long Jump] 遠距離
+                    // Difficultyが低いときは、距離を抑える
+                    const distDifficulty = 0.6 + (difficulty * 0.4); // 0.6 ~ 1.0
+                    heightDelta = (Math.random() * 100 + 50) * SCALE; 
+                    gap = maxDistance * 0.75 * distDifficulty;
+                    w = (Math.random() * 300 + 200) * SCALE;
+
+                } else if (pattern < 0.75) {
+                    // [Pattern C: Tiny Platform] 極小足場
+                    gap = (Math.random() * 100 + 50) * SCALE;
+                    // 難易度が高いほど小さくなる
+                    const minW = 80 * SCALE;
+                    const bonusW = (1.0 - difficulty) * 200 * SCALE;
+                    w = minW + bonusW; 
+                    heightDelta = (Math.random() * 200 - 100) * SCALE;
+
+                } else {
+                    // [Pattern D: Steep Slope] 急な坂
+                    type = 'slope';
+                    w = (Math.random() * 300 + 200) * SCALE;
+                    gap = scaleBaseGap;
+                    
+                    const slopeH = (150 + (difficulty * 200)) * SCALE;
+                    if (Math.random() > 0.5) {
+                         heightDelta = 0; 
+                         endY = startY - slopeH;
+                    } else {
+                         heightDelta = 0;
+                         endY = startY + slopeH;
+                    }
+                }
+            } else {
+                // Normal Mode (たまに緩い坂が出る程度)
+                if (Math.random() > 0.5) {
+                    type = 'slope';
+                    const slopeH = (Math.random() * 100 * SCALE) + 30 * SCALE;
+                    if (Math.random() > 0.5) endY = startY - slopeH;
+                    else endY = startY + slopeH;
+                    heightDelta = 0;
+                }
+            }
+
+            // 最終座標決定
+            let nextY = startY + heightDelta;
+            
+            // 画面外制限
+            const marginTop = 150 * SCALE;
+            const marginBottom = canvas.height - (150 * SCALE);
+            
+            if (type !== 'slope') {
+                if (nextY < marginTop) nextY = marginTop + 50 * SCALE;
+                if (nextY > marginBottom) nextY = marginBottom;
+                endY = nextY;
+            } else {
+                if (endY < marginTop) endY = marginTop + 50 * SCALE;
+                if (endY > marginBottom) endY = marginBottom;
+                nextY = startY; 
+            }
+            
+            this.addBlock(lastBlock.x + lastBlock.w + gap, nextY, w, type, endY);
+        }
+
+        draw() {
+            ctx.save();
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = CONFIG.colors.ground;
+            this.blocks.forEach(block => block.draw());
+            ctx.restore();
+        }
+    }
+
+    class Background {
+        constructor() {
+            this.offset = 0;
+            this.buildings = [];
+            for(let i=0; i<25; i++) {
+                this.addBuilding(i * 80);
+            }
+        }
+        
+        addBuilding(x) {
+            this.buildings.push({
+                x: x,
+                w: (60 + Math.random() * 80) * SCALE,
+                h: (100 + Math.random() * 300) * SCALE,
+                color: `rgba(0, ${Math.floor(100 + Math.random()*155)}, 255, 0.1)`
+            });
+        }
+
+        draw() {
+            const scrollSpeed = gameSpeed * 0.2;
+            this.offset = (this.offset + gameSpeed * 0.5) % (100 * SCALE);
+            
+            ctx.save();
+            this.buildings.forEach((b, index) => {
+                b.x -= scrollSpeed;
+                if(b.x + b.w < 0) {
+                    b.x = canvas.width + Math.random() * 100;
+                    b.h = (100 + Math.random() * 300) * SCALE;
+                }
+                ctx.fillStyle = b.color;
+                ctx.fillRect(b.x, canvas.height - b.h, b.w, b.h);
+            });
+
+            ctx.strokeStyle = CONFIG.colors.bgGrid;
+            ctx.lineWidth = 1;
+            const horizon = canvas.height * 0.6;
+            for (let y = horizon; y < canvas.height; y += (30 * SCALE)) {
+                 const progress = (y - horizon) / (canvas.height - horizon);
+                 const lineY = (y + this.offset * progress) % (canvas.height);
+                 if(lineY > horizon) {
+                     ctx.beginPath();
+                     ctx.moveTo(0, lineY);
+                     ctx.lineTo(canvas.width, lineY);
+                     ctx.stroke();
+                 }
+            }
+            const centerX = canvas.width / 2;
+             for (let x = -canvas.width; x < canvas.width * 2; x += (150 * SCALE)) {
+                ctx.beginPath();
+                ctx.moveTo(centerX + (x - centerX) * 0.2, horizon); 
+                ctx.lineTo(x, canvas.height); 
+                ctx.stroke();
+            }
+            ctx.restore();
+        }
+    }
+
+    // --- Main Logic ---
+
+    let bike;
+    let terrain;
+    let background;
+
+    function initGame() {
+        bike = new Bike();
+        terrain = new Terrain();
+        background = new Background();
+        
+        score = 0;
+        gameSpeed = CONFIG.initialSpeed;
+        scoreEl.innerText = score;
+        
+        isGameRunning = true;
+        menuScreen.classList.add('hidden');
+        gameOverScreen.classList.add('hidden');
+        
+        frameCount = 0;
+        animate();
+    }
+
+    function gameOver() {
+        isGameRunning = false;
+        cancelAnimationFrame(animationId);
+        finalScoreEl.innerText = Math.floor(score);
+        if (score > highScore) {
+            highScore = score;
+            localStorage.setItem('cyberRunHighScore', highScore);
+            highScoreEl.innerText = Math.floor(highScore);
+        }
+        gameOverScreen.classList.remove('hidden');
+    }
+
+    function checkCollision() {
+        if (bike.y > canvas.height + 50) return true;
+
+        const bx = bike.x;
+        const by = bike.y;
+        const bw = 10 * SCALE; 
+        const bh = 18 * SCALE; 
+
+        bike.grounded = false; 
+
+        for (let block of terrain.blocks) {
+            if (bx + bw > block.x && bx - bw < block.x + block.w) {
+                
+                let surfaceY;
+                let targetAngle = 0;
+                if (block.type === 'slope') {
+                    const progress = (bx - block.x) / block.w;
+                    surfaceY = block.y + (block.endY - block.y) * progress;
+                    if (bx > block.x && bx < block.x + block.w) {
+                        targetAngle = getAngle(block.x, block.y, block.x + block.w, block.endY);
+                    }
+                } else {
+                    surfaceY = block.y;
+                    targetAngle = 0;
+                }
+
+                const tolerance = 20 * SCALE; 
+                if (by + bh >= surfaceY - tolerance && by + bh <= surfaceY + tolerance + (bike.dy > 0 ? bike.dy : 0)) {
+                    if (bike.dy >= -5 * SCALE) { 
+                        bike.y = surfaceY - bh; 
+                        bike.dy = 0;
+                        bike.land(targetAngle); 
+                        return false; 
+                    }
+                }
+
+                const penetrationLimit = 15 * SCALE; 
+                if (bx + bw > block.x && bx - bw < block.x + penetrationLimit) {
+                     if (by + bh > surfaceY + (5 * SCALE)) { 
+                         return true; 
+                     }
+                }
+            }
+        }
+        return false;
+    }
+
+    function animate() {
+        if (!isGameRunning) return;
+
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (gameSpeed < CONFIG.maxSpeed) {
+            gameSpeed += CONFIG.speedIncrease;
+        }
+        score += gameSpeed * 0.1;
+        scoreEl.innerText = Math.floor(score);
+        frameCount++;
+
+        background.draw();
+        
+        terrain.update();
+        terrain.draw();
+
+        bike.update();
+        
+        if (checkCollision()) {
+            gameOver();
+            bike.draw(); 
+            return;
+        }
+
+        bike.draw();
+
+        animationId = requestAnimationFrame(animate);
+    }
+
+    function handleJump(e) {
+        if (e.cancelable) e.preventDefault();
+        if (isGameRunning) {
+            bike.jump();
+        }
+    }
+
+    document.addEventListener('touchstart', (e) => {
+        if (e.target.tagName !== 'BUTTON') handleJump(e);
+    }, { passive: false });
+
+    document.addEventListener('mousedown', (e) => {
+         if (e.target.tagName !== 'BUTTON') handleJump(e);
+    });
+    
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'Space' || e.code === 'ArrowUp') {
+            handleJump(e);
+        }
+    });
+
+    const startGame = (e) => {
+        e.stopPropagation();
+        initGame();
+    };
+
+    startBtn.addEventListener('click', startGame);
+    startBtn.addEventListener('touchstart', startGame);
+    restartBtn.addEventListener('click', startGame);
+    restartBtn.addEventListener('touchstart', startGame);
+
+    const bg = new Background();
+    const tr = new Terrain();
+    bg.draw();
+    tr.draw();
+
+</script>
+</body>
+</html>
