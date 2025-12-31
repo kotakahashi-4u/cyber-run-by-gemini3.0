@@ -17,6 +17,8 @@
             color: #fff;
             -webkit-user-select: none;
             user-select: none;
+            /* モバイルでのハイライト消去 */
+            -webkit-tap-highlight-color: transparent;
         }
 
         #game-container {
@@ -177,14 +179,14 @@
 
     const CONFIG = {
         // スピードアップに伴い、重力とジャンプ力も少し強化して操作感を調整
-        gravity: (isMobile ? 0.6 : 0.65) * SCALE, // 元: 0.45/0.5
-        jumpForce: (isMobile ? 14.0 : 15.0) * SCALE, // 元: 12.0/13.0
-        doubleJumpForce: (isMobile ? 11.0 : 12.0) * SCALE, // 元: 10.0/11.0
+        gravity: (isMobile ? 0.6 : 0.65) * SCALE, 
+        jumpForce: (isMobile ? 14.0 : 15.0) * SCALE,
+        doubleJumpForce: (isMobile ? 11.0 : 12.0) * SCALE,
         
         // 初期スピードを約2倍に設定
-        initialSpeed: (isMobile ? 5.0 : 7.0) * SCALE, // 元: 2.5/3.5
+        initialSpeed: (isMobile ? 5.0 : 7.0) * SCALE,
         speedIncrease: 0.0001 * SCALE, 
-        maxSpeed: (isMobile ? 10 : 13) * SCALE, // 元: 7/9
+        maxSpeed: (isMobile ? 10 : 13) * SCALE,
         
         colors: {
             bike: '#0ff', 
@@ -205,6 +207,7 @@
     const gameOverScreen = document.getElementById('game-over-screen');
     const startBtn = document.getElementById('startBtn');
     const restartBtn = document.getElementById('restartBtn');
+    const gameContainer = document.getElementById('game-container');
 
     let animationId = null;
     let score = 0;
@@ -612,7 +615,7 @@
     let background;
 
     function initGame() {
-        // 重複起動防止（モバイルでの速度異常の原因対策）
+        // 重複起動防止
         if (animationId) {
             cancelAnimationFrame(animationId);
             animationId = null;
@@ -733,18 +736,34 @@
         }
     }
 
-    // タッチデバイス対策
-    // ボタン以外のタッチでジャンプ
-    document.addEventListener('touchstart', (e) => {
+    // --- Touch & Click Handling ---
+    let isTouching = false;
+
+    // Game Container に対するタッチ制御
+    // ボタン以外の領域でのタッチ操作を適切に処理
+    gameContainer.addEventListener('touchstart', (e) => {
         if (e.target.tagName !== 'BUTTON') {
-            e.preventDefault(); // スクロール防止
+            e.preventDefault(); // デフォルトのスクロール/ズームなどを防ぐ
+            isTouching = true;
             handleJump(e);
         }
     }, { passive: false });
 
-    // PC/マウスクリック
+    // スクロールやズームを完全に防ぐ
+    gameContainer.addEventListener('touchmove', (e) => {
+        e.preventDefault(); 
+    }, { passive: false });
+
+    gameContainer.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        // 遅延してフラグを下ろす（タッチ後の遅延クリックイベント対策）
+        setTimeout(() => { isTouching = false; }, 300);
+    }, { passive: false });
+
+    // PC/マウス操作
     document.addEventListener('mousedown', (e) => {
-         if (e.target.tagName !== 'BUTTON') handleJump(e);
+        if (isTouching) return; // タッチ直後のマウスイベントは無視
+        if (e.target.tagName !== 'BUTTON') handleJump(e);
     });
     
     // キーボード操作
@@ -760,7 +779,7 @@
         initGame();
     };
 
-    // リスナー登録（重複発火を防ぐため、initGame内で既存ループをキャンセルするように修正済み）
+    // リスナー登録
     startBtn.addEventListener('click', startGame);
     startBtn.addEventListener('touchstart', startGame, { passive: false });
     
