@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cyber Run - High Speed</title>
+    <title>Cyber Run - Speed Adjusted</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
 
@@ -157,8 +157,8 @@
         <h1>CYBER<br>RUN</h1>
         <p class="instruction">
             [TAP] ジャンプ / [DOUBLE TAP] 2段ジャンプ<br>
-            スピードアップ & 軽量化チューニング済み。<br>
-            <span style="color: #f0f;">High Speed Edition</span>
+            油断するな。序盤から牙を剥く。<br>
+            <span style="color: #f0f;">Speed Adjusted Edition</span>
         </p>
         <button id="startBtn" class="btn-cyber">START</button>
     </div>
@@ -180,13 +180,14 @@
         jumpForce: (isMobile ? 12.0 : 13.0) * SCALE,
         doubleJumpForce: (isMobile ? 10.0 : 11.0) * SCALE,
         
-        // --- Speed Adjusted (Faster) ---
-        // Mobile: 2.5 -> 4.5
-        // PC: 3.5 -> 6.5
-        initialSpeed: (isMobile ? 4.5 : 6.5) * SCALE,
-        // 加速を少し戻す（速くなりすぎない程度に）
-        speedIncrease: 0.0002 * SCALE, 
-        maxSpeed: (isMobile ? 12 : 16) * SCALE, 
+        // Initial Speed Adjusted:
+        // Mobile: 2.5 -> 3.0 (+20%)
+        // PC: 3.5 -> 7.0 (x2)
+        initialSpeed: (isMobile ? 3.0 : 7.0) * SCALE,
+        // 加速は極めて緩やかに (難易度は地形で上げるため)
+        speedIncrease: 0.00005 * SCALE, 
+        // Max Speed Adjusted to accommodate higher initial speeds
+        maxSpeed: (isMobile ? 8 : 13) * SCALE, 
         
         colors: {
             bike: '#0ff', 
@@ -265,11 +266,9 @@
             ctx.rotate(this.rotation);
             ctx.scale(SCALE, SCALE);
 
-            // Glow - Mobile Optimization (Remove Heavy Glow)
-            if (!isMobile) {
-                ctx.shadowBlur = this.isBackflipping ? 25 : 15;
-                ctx.shadowColor = CONFIG.colors.bike;
-            }
+            // Glow
+            ctx.shadowBlur = this.isBackflipping ? 25 : 15;
+            ctx.shadowColor = CONFIG.colors.bike;
 
             // Bike Visuals
             ctx.strokeStyle = CONFIG.colors.bike;
@@ -319,10 +318,7 @@
             }
 
             ctx.save();
-            // Glow Optimization for Trail
-            if (!isMobile) {
-                ctx.shadowBlur = 10;
-            }
+            ctx.shadowBlur = 10;
             ctx.lineWidth = 2 * SCALE;
             
             for (let i = 0; i < this.trail.length - 1; i++) {
@@ -331,7 +327,7 @@
                 p1.x -= gameSpeed; 
 
                 ctx.strokeStyle = p1.isSpecial ? '#f0f' : `rgba(0, 255, 255, 0.4)`;
-                if(!isMobile) ctx.shadowColor = p1.isSpecial ? '#f0f' : CONFIG.colors.bike;
+                ctx.shadowColor = p1.isSpecial ? '#f0f' : CONFIG.colors.bike;
                 
                 ctx.beginPath();
                 ctx.moveTo(p1.x, p1.y);
@@ -383,11 +379,6 @@
             if (this.x > canvas.width || this.x + this.w < 0) return;
 
             ctx.fillStyle = '#050510';
-            // Mobile Optimization
-            if (!isMobile) {
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = CONFIG.colors.ground;
-            }
             ctx.strokeStyle = CONFIG.colors.ground;
             ctx.lineWidth = 2 * SCALE;
 
@@ -469,9 +460,11 @@
             let difficulty = Math.min(score / 3000, 1.0);
             
             // --- ハードコア確率 ---
+            // 序盤(0点)でも 10% くらいの確率で変則的な地形が出る
+            // 終盤(3000点~)は 90% くらいがハードコア
             const hardcoreChance = 0.1 + (difficulty * 0.8);
 
-            // デフォルト生成設定 (Speedに合わせてギャップも広がる)
+            // デフォルト生成設定
             const scaleBaseGap = (isMobile ? 60 : 100) * SCALE;
             let gap = Math.floor(scaleBaseGap + (gameSpeed * 10 * SCALE));
             let w = Math.floor((Math.random() * 400 + 200) * SCALE);
@@ -487,14 +480,17 @@
 
                 if (pattern < 0.25) {
                     // [Pattern A: The Wall] 絶壁
-                    const wallDifficulty = 0.5 + (difficulty * 0.5); 
+                    // Difficultyが低いときは、そこまで高くしない
+                    const wallDifficulty = 0.5 + (difficulty * 0.5); // 0.5 ~ 1.0
                     gap = scaleBaseGap; 
                     w = (Math.random() * 200 + 300) * SCALE;
+                    // Max高さ * 係数
                     heightDelta = -(h2 * 0.9 * wallDifficulty); 
                     
                 } else if (pattern < 0.5) {
                     // [Pattern B: Long Jump] 遠距離
-                    const distDifficulty = 0.6 + (difficulty * 0.4); 
+                    // Difficultyが低いときは、距離を抑える
+                    const distDifficulty = 0.6 + (difficulty * 0.4); // 0.6 ~ 1.0
                     heightDelta = (Math.random() * 100 + 50) * SCALE; 
                     gap = maxDistance * 0.75 * distDifficulty;
                     w = (Math.random() * 300 + 200) * SCALE;
@@ -502,6 +498,7 @@
                 } else if (pattern < 0.75) {
                     // [Pattern C: Tiny Platform] 極小足場
                     gap = (Math.random() * 100 + 50) * SCALE;
+                    // 難易度が高いほど小さくなる
                     const minW = 80 * SCALE;
                     const bonusW = (1.0 - difficulty) * 200 * SCALE;
                     w = minW + bonusW; 
@@ -523,7 +520,7 @@
                     }
                 }
             } else {
-                // Normal Mode
+                // Normal Mode (たまに緩い坂が出る程度)
                 if (Math.random() > 0.5) {
                     type = 'slope';
                     const slopeH = (Math.random() * 100 * SCALE) + 30 * SCALE;
@@ -555,11 +552,8 @@
 
         draw() {
             ctx.save();
-            // Mobile Optimization
-            if (!isMobile) {
-                ctx.shadowBlur = 10;
-                ctx.shadowColor = CONFIG.colors.ground;
-            }
+            ctx.shadowBlur = 10;
+            ctx.shadowColor = CONFIG.colors.ground;
             this.blocks.forEach(block => block.draw());
             ctx.restore();
         }
