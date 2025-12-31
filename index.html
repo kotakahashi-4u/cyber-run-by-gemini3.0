@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cyber Run - High Speed</title>
+    <title>Cyber Run - Extreme</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
 
@@ -29,7 +29,7 @@
             justify-content: center;
             align-items: center;
             overflow: hidden;
-            touch-action: none; /* コンテナレベルでも無効化 */
+            touch-action: none;
         }
 
         canvas {
@@ -161,8 +161,8 @@
         <h1>CYBER<br>RUN</h1>
         <p class="instruction">
             [TAP] ジャンプ / [DOUBLE TAP] 2段ジャンプ<br>
-            SPEED UP VERSION<br>
-            <span style="color: #f0f;">High Velocity Mode</span>
+            EXTREME DIFFICULTY<br>
+            <span style="color: #f0f;">Full Throttle Mode</span>
         </p>
         <button id="startBtn" class="btn-cyber">START</button>
     </div>
@@ -185,9 +185,10 @@
         jumpForce: (isMobile ? 14.0 : 15.0) * SCALE,
         doubleJumpForce: (isMobile ? 11.0 : 12.0) * SCALE,
         
-        initialSpeed: (isMobile ? 5.0 : 7.0) * SCALE,
-        speedIncrease: 0.0001 * SCALE, 
-        maxSpeed: (isMobile ? 10 : 13) * SCALE,
+        // 初期スピードをさらに30%アップ
+        initialSpeed: (isMobile ? 6.5 : 9.0) * SCALE,
+        speedIncrease: 0.00015 * SCALE, // 加速ペースも少しアップ
+        maxSpeed: (isMobile ? 13 : 16) * SCALE, // 上限も開放
         
         colors: {
             bike: '#0ff', 
@@ -346,8 +347,6 @@
                 
                 ctx.beginPath();
                 ctx.moveTo(p1.x, p1.y);
-                // p2の座標は描画用なので、ここでは単純に線を引く
-                // ※p2自体もループの次の回でp1として移動される
                 ctx.lineTo(p2.x - (gameSpeed * timeScale), p2.y);
                 ctx.stroke();
             }
@@ -444,7 +443,6 @@
 
         update(timeScale) {
             for (let i = 0; i < this.blocks.length; i++) {
-                // 地形移動に時間補正
                 this.blocks[i].x -= gameSpeed * timeScale;
             }
             if (this.blocks.length > 0 && this.blocks[0].x + this.blocks[0].w < -100) {
@@ -458,63 +456,90 @@
         }
 
         generateNextBlock(lastBlock) {
-            // ここは静的な配置計算なので timeScale は不要 (gameSpeed自体は現在の速度)
             const gravity = CONFIG.gravity;
             const v1 = CONFIG.jumpForce;
             const v2 = CONFIG.doubleJumpForce;
             
-            const h2 = ((v1 + v2) * (v1 + v2)) / (2 * gravity); 
-            const flightTime = (v1 + v2) / gravity * 2.2; 
+            // --- 物理計算による到達限界チェック ---
+            // 理論上上昇できる最大の高さ
+            const maxRiseTheoretical = ((v1 * v1) + (v2 * v2)) / (2 * gravity);
+            
+            // 安全マージン: 理論値の85% (以前と同じ、ただし速度アップで実質距離は伸びる)
+            const maxRiseSafe = maxRiseTheoretical * 0.85; 
+
+            // 滞空時間（飛距離計算用）
+            const flightTime = (v1 + v2) / gravity * 2.0; 
             const maxDistance = gameSpeed * flightTime;
 
-            let difficulty = Math.min(score / 5000, 1.0); 
-            const hardcoreChance = 0.1 + (difficulty * 0.8);
+            // --- 難易度係数 (Extreme Tune) ---
+            // 2000点でMAXになるよう、成長を早める
+            let difficulty = Math.min(score / 2000, 1.0); 
+            // ハードコア出現率の底上げ: 0.1 -> 0.2
+            const hardcoreChance = 0.2 + (difficulty * 0.8);
 
+            // --- 足場幅の調整 (Extreme Tune) ---
             const scaleBaseGap = (isMobile ? 60 : 100) * SCALE;
             let gap = Math.floor(scaleBaseGap + (gameSpeed * 8 * SCALE)); 
-            let w = Math.floor((Math.random() * 400 + 200) * SCALE);
+
+            // 足場幅をより積極的に短くする (MAXで30%まで縮む)
+            const widthFactor = 1.0 - (difficulty * 0.7); 
+            const baseW = (Math.random() * 300 + 150) * SCALE;
+            let w = Math.floor(baseW * widthFactor);
+            // 最低保証も少し小さくして難易度アップ (80 -> 70)
+            if (w < 70 * SCALE) w = 70 * SCALE;
+
             let heightDelta = (Math.random() * 200 - 100) * SCALE;
             let type = 'flat';
             let endY;
             let startY = lastBlock.endY;
 
+            // --- パターン生成 ---
             if (Math.random() < hardcoreChance) {
                 const pattern = Math.random();
 
                 if (pattern < 0.25) {
-                    const wallDifficulty = 0.5 + (difficulty * 0.5); 
+                    // Pattern A: The Wall (高所)
+                    // 上昇限界をチェック
+                    const wallDifficulty = 0.6 + (difficulty * 0.4); 
                     gap = scaleBaseGap; 
-                    w = (Math.random() * 200 + 300) * SCALE;
-                    heightDelta = -(h2 * 0.8 * wallDifficulty); 
+                    // 壁の足場幅も短く
+                    w = (Math.random() * 200 + 300) * SCALE * widthFactor;
                     
+                    heightDelta = -(maxRiseSafe * wallDifficulty); 
+
                 } else if (pattern < 0.5) {
-                    const distDifficulty = 0.6 + (difficulty * 0.4); 
-                    heightDelta = (Math.random() * 100 + 50) * SCALE; 
-                    gap = maxDistance * 0.7 * distDifficulty; 
-                    w = (Math.random() * 300 + 200) * SCALE;
+                    // Pattern B: Long Jump (遠距離)
+                    const distDifficulty = 0.7 + (difficulty * 0.3); 
+                    
+                    heightDelta = (Math.random() * 50) * SCALE; 
+                    gap = maxDistance * 0.75 * distDifficulty; 
+                    w = (Math.random() * 300 + 200) * SCALE * widthFactor;
 
                 } else if (pattern < 0.75) {
+                    // Pattern C: Tiny Platform (狭い足場)
                     gap = (Math.random() * 100 + 50) * SCALE;
-                    const minW = 100 * SCALE; 
-                    const bonusW = (1.0 - difficulty) * 200 * SCALE;
-                    w = minW + bonusW; 
+                    // ここは極端に狭く: 最小60
+                    w = (60 + Math.random() * 50) * SCALE; 
                     heightDelta = (Math.random() * 200 - 100) * SCALE;
 
                 } else {
+                    // Pattern D: Steep Slope (急坂)
                     type = 'slope';
                     w = (Math.random() * 300 + 200) * SCALE;
                     gap = scaleBaseGap;
                     
-                    const slopeH = (150 + (difficulty * 200)) * SCALE;
+                    const slopeH = Math.min((150 + (difficulty * 100)) * SCALE, maxRiseSafe);
+                    
                     if (Math.random() > 0.5) {
                          heightDelta = 0; 
-                         endY = startY - slopeH;
+                         endY = startY - slopeH; // 上り坂
                     } else {
                          heightDelta = 0;
-                         endY = startY + slopeH;
+                         endY = startY + slopeH; // 下り坂
                     }
                 }
             } else {
+                // Normal Mode
                 if (Math.random() > 0.5) {
                     type = 'slope';
                     const slopeH = (Math.random() * 100 * SCALE) + 30 * SCALE;
@@ -524,10 +549,34 @@
                 }
             }
 
+            // --- 最終座標決定と安全装置 (Anti-Softlock) ---
+            
+            // 1. 上昇制限 (SlopeのendYも含む)
+            if (type === 'slope') {
+                if (endY < startY) { // 上方向
+                    const rise = startY - endY;
+                    if (rise > maxRiseSafe) {
+                        endY = startY - maxRiseSafe;
+                    }
+                }
+            } else {
+                if (heightDelta < 0) { // 上方向
+                    if (Math.abs(heightDelta) > maxRiseSafe) {
+                        heightDelta = -maxRiseSafe;
+                    }
+                }
+                
+                // 距離があるのに高い場合（物理的に届かないケース）の補正
+                if (gap > maxDistance * 0.6 && heightDelta < 0) {
+                    heightDelta = 0;
+                }
+            }
+
             let nextY = startY + heightDelta;
             const marginTop = 150 * SCALE;
             const marginBottom = canvas.height - (150 * SCALE);
             
+            // 画面外制限
             if (type !== 'slope') {
                 if (nextY < marginTop) nextY = marginTop + 50 * SCALE;
                 if (nextY > marginBottom) nextY = marginBottom;
@@ -713,9 +762,6 @@
         lastTime = timestamp;
 
         // 基準: 60FPS (約16.666ms)
-        // 経過時間が16.666msなら 1.0 になる係数
-        // 120Hzなら約8.3msなので 0.5 になり、移動量も半分になる -> 2回呼ばれて計1.0相当に進む
-        // タブ切り替えなどで時間が飛びすぎた場合の補正（最大でも3フレーム分程度に制限）
         let timeScale = deltaTime / 16.666;
         if (timeScale > 3.0) timeScale = 1.0; // 異常値は1.0に戻す
 
