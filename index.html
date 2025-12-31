@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Cyber Run - Speed Adjusted</title>
+    <title>Cyber Run - Progressive Difficulty</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
 
@@ -158,7 +158,7 @@
         <p class="instruction">
             [TAP] ジャンプ / [DOUBLE TAP] 2段ジャンプ<br>
             油断するな。序盤から牙を剥く。<br>
-            <span style="color: #f0f;">Speed Adjusted Edition</span>
+            <span style="color: #f0f;">Progressive Difficulty</span>
         </p>
         <button id="startBtn" class="btn-cyber">START</button>
     </div>
@@ -180,14 +180,10 @@
         jumpForce: (isMobile ? 12.0 : 13.0) * SCALE,
         doubleJumpForce: (isMobile ? 10.0 : 11.0) * SCALE,
         
-        // Initial Speed Adjusted:
-        // Mobile: 2.5 -> 3.0 (+20%)
-        // PC: 3.5 -> 7.0 (x2)
-        initialSpeed: (isMobile ? 3.0 : 7.0) * SCALE,
+        initialSpeed: (isMobile ? 2.5 : 3.5) * SCALE,
         // 加速は極めて緩やかに (難易度は地形で上げるため)
         speedIncrease: 0.00005 * SCALE, 
-        // Max Speed Adjusted to accommodate higher initial speeds
-        maxSpeed: (isMobile ? 8 : 13) * SCALE, 
+        maxSpeed: (isMobile ? 7 : 9) * SCALE, 
         
         colors: {
             bike: '#0ff', 
